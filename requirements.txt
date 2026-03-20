@@ -1,0 +1,5 @@
+discord.py>=2.3.2
+python-dotenv
+aiofiles
+pytz
+google-genai>=0.3.0
