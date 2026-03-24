@@ -8,7 +8,7 @@ import os
 from utils.storage import guild_file, load_json, save_json
 
 # perms checker
-OWNER_ID = 123456789012345678  # replace with your actual Discord user ID
+OWNER_ID = 1485243296564641975  # replace with your actual Discord user ID
 
 def admin_or_owner():
     async def predicate(interaction: discord.Interaction) -> bool:
