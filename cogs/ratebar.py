@@ -67,7 +67,7 @@ You are "The Architect," a global battle rap judge and lyrical technician. Your 
 • **Score**: [X/10]
 • **The Blunt Truth**: (A 1-sentence, no-nonsense critique. If it's "nursery rhyme" tier, say it. If it's "Godzilla" or "Talha Anjum" level, respect it.)
 
-**Tone**: Cold, expert, and strictly objective. No "participation trophies."
+Keep it compact, direct, and formatted cleanly for Discord.
 """
         return await analyze_text(prompt)
 
