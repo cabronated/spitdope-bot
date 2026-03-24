@@ -9,6 +9,16 @@ from datetime import datetime
 import pytz
 from utils.ai_client import analyze_text
 
+OWNER_ID = 1485243296564641975   # replace with your actual Discord user ID
+
+def admin_or_owner():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return (
+            interaction.user.id == OWNER_ID
+            or interaction.user.guild_permissions.administrator
+        )
+    return app_commands.check(predicate)
+    
 COOLDOWN_FILE = "cooldowns.json"
 DAILY_LIMIT = 3
 IST = pytz.timezone("Asia/Kolkata")
@@ -82,17 +92,15 @@ Bar:
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="clearcooldown", description="Clear all ratebar cooldowns (Admin only).")
+    @admin_or_owner()
     async def clearcooldown(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Admin only command.", ephemeral=True)
         user_last_used.clear()
         save_cooldowns(user_last_used)
         await interaction.response.send_message("✅ All cooldowns cleared.", ephemeral=True)
 
     @app_commands.command(name="statsbar", description="Show today's bar rating usage (Admin only).")
+    @admin_or_owner()
     async def statsbar(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Admin only command.", ephemeral=True)
         now = datetime.now(IST)
         today = now.date().isoformat()
         lines = []
