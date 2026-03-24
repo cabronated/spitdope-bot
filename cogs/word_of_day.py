@@ -7,6 +7,18 @@ import pytz
 import os
 from utils.storage import guild_file, load_json, save_json
 
+# perms checker
+OWNER_ID = 123456789012345678  # replace with your actual Discord user ID
+
+def admin_or_owner():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return (
+            interaction.user.id == OWNER_ID
+            or interaction.user.guild_permissions.administrator
+        )
+    return app_commands.check(predicate)
+    
+
 DEFAULT_CONFIG = {
     "post_channel": None,
     "bars_channel": None,
@@ -50,7 +62,7 @@ class WordOfDayCog(commands.Cog):
 
     # ========== Slash commands ==========
     @app_commands.command(name="setup", description="Configure bot for this server (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def setup(self, inter: discord.Interaction,
                     post_channel: discord.TextChannel,
                     bars_channel: discord.TextChannel,
@@ -69,7 +81,7 @@ class WordOfDayCog(commands.Cog):
         await inter.response.send_message("✅ Setup updated!", ephemeral=True)
 
     @app_commands.command(name="add_words", description="Add comma-separated words (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def add_words(self, inter: discord.Interaction, words: str):
         path = guild_file(inter.guild.id)
         cfg = await load_json(path, DEFAULT_CONFIG)
@@ -82,7 +94,7 @@ class WordOfDayCog(commands.Cog):
         await inter.response.send_message(f"✅ Added {count} words!", ephemeral=True)
 
     @app_commands.command(name="view_words", description="View remaining words (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def view_words(self, inter: discord.Interaction):
         cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
         words = cfg["words"]
@@ -92,7 +104,7 @@ class WordOfDayCog(commands.Cog):
         await inter.response.send_message(f"📜 Word list:\n{msg}", ephemeral=True)
 
     @app_commands.command(name="remove_word", description="Remove word (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def remove_word(self, inter: discord.Interaction, word: str):
         path = guild_file(inter.guild.id)
         cfg = await load_json(path, DEFAULT_CONFIG)
@@ -104,13 +116,13 @@ class WordOfDayCog(commands.Cog):
         await inter.response.send_message("⚠️ Word not found.", ephemeral=True)
 
     @app_commands.command(name="word_count", description="Show words left (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def word_count(self, inter: discord.Interaction):
         cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
         await inter.response.send_message(f"🧾 Words left: **{len(cfg['words'])}**", ephemeral=True)
 
     @app_commands.command(name="next_wordtime", description="See when the next word will post (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def next_wordtime(self, inter: discord.Interaction):
         cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
         tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
@@ -129,7 +141,7 @@ class WordOfDayCog(commands.Cog):
         )
 
     @app_commands.command(name="post_now", description="Post next word immediately (Admin)")
-    @app_commands.checks.has_permissions(administrator=True)
+    @admin_or_owner()
     async def post_now(self, inter: discord.Interaction):
         success = await self.post_word(inter.guild.id)
         if success:
