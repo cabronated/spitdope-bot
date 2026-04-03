@@ -32,20 +32,86 @@ DEFAULT_CONFIG = {
 class WordOfDayCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        if not daily_word_task.is_running():
-            daily_word_task.start()
+        # Start the background task when the cog is loaded
+        self.daily_word_task.start()
 
+    def cog_unload(self):
+        # Clean up and stop the background task when the cog is unloaded
+        self.daily_word_task.cancel()
+
+    # ========== Background Task ==========
+    @tasks.loop(minutes=1)
+    async def daily_word_task(self):
+        # Ensure the bot is connected before trying to do anything
+        await self.bot.wait_until_ready()
+        
+        DATA_DIR = "bot_data"
+        if not os.path.exists(DATA_DIR):
+            return
+
+        for file in os.listdir(DATA_DIR):
+            if not file.endswith(".json"):
+                continue
+            
+            try:
+                gid = int(file.split(".")[0])
+            except ValueError:
+                continue
+
+            path = guild_file(gid)
+            cfg = await load_json(path, DEFAULT_CONFIG)
+            
+            # Check if setup is fully complete for this guild
+            if not (cfg.get("post_channel") and cfg.get("bars_channel") and cfg.get("role_id")):
+                continue
+
+            try:
+                tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
+            except Exception:
+                tz = pytz.timezone("Asia/Kolkata")
+                
+            local_now = datetime.now(tz)
+            
+            # Parse target time
+            try:
+                hour, minute = map(int, cfg["daily_time"].split(":"))
+            except (ValueError, KeyError):
+                # Fallback if config is broken
+                hour, minute = 7, 0 
+            
+            # Check if we already posted today
+            last_post_iso = cfg.get("last_post")
+            last_post_date = None
+            if last_post_iso:
+                # Convert the UTC ISO string back to local date for comparison
+                try:
+                    last_post_dt = datetime.fromisoformat(last_post_iso)
+                    if last_post_dt.tzinfo is None:
+                        last_post_dt = last_post_dt.replace(tzinfo=pytz.UTC)
+                    last_post_date = last_post_dt.astimezone(tz).date()
+                except ValueError:
+                    pass
+
+            # If it's the right hour and minute, and we haven't posted today yet
+            if local_now.hour == hour and local_now.minute == minute:
+                if last_post_date != local_now.date():
+                    await self.post_word(gid)
+
+    # ========== Core Posting Logic ==========
     async def post_word(self, gid: int) -> bool:
         path = guild_file(gid)
         cfg = await load_json(path, DEFAULT_CONFIG)
         words = cfg.get("words", [])
+        
         if not words:
             print(f"[AUTO] ❌ No words left for guild {gid}")
             return False
+            
         channel = self.bot.get_channel(cfg["post_channel"])
         if not channel:
             print(f"[AUTO] ⚠️ Missing post channel for guild {gid}")
             return False
+
         word = words.pop(0)
         msg = (
             f"**Word of the day is:**\n"
@@ -53,9 +119,12 @@ class WordOfDayCog(commands.Cog):
             f"Drop bars using this word in <#{cfg['bars_channel']}>\n"
             f"<@&{cfg['role_id']}>"
         )
+        
         await channel.send(msg)
+        
         cfg["words"] = words
-        cfg["last_post"] = datetime.utcnow().isoformat()
+        # Save last post time as UTC ISO format
+        cfg["last_post"] = datetime.now(pytz.UTC).isoformat()
         await save_json(path, cfg)
         print(f"[AUTO] ✅ Posted WOTD '{word}' in guild {gid}")
         return True
@@ -125,15 +194,25 @@ class WordOfDayCog(commands.Cog):
     @admin_or_owner()
     async def next_wordtime(self, inter: discord.Interaction):
         cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
-        tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
+        try:
+            tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
+        except Exception:
+            tz = pytz.timezone("Asia/Kolkata")
+            
         now = datetime.now(tz)
-        hour, minute = map(int, cfg["daily_time"].split(":"))
+        try:
+            hour, minute = map(int, cfg["daily_time"].split(":"))
+        except (ValueError, KeyError):
+            return await inter.response.send_message("⚠️ `daily_time` is not configured correctly. Please run `/setup` again.", ephemeral=True)
+            
         next_time = tz.localize(datetime(now.year, now.month, now.day, hour, minute))
         if now >= next_time:
             next_time += timedelta(days=1)
+            
         diff = next_time - now
         hours, remainder = divmod(int(diff.total_seconds()), 3600)
         mins = remainder // 60
+        
         await inter.response.send_message(
             f"🕓 **Next Post:** {next_time.strftime('%Y-%m-%d %H:%M %Z')}\n"
             f"⏳ Time left: {hours}h {mins}m",
@@ -143,46 +222,13 @@ class WordOfDayCog(commands.Cog):
     @app_commands.command(name="post_now", description="Post next word immediately (Admin)")
     @admin_or_owner()
     async def post_now(self, inter: discord.Interaction):
+        # We can defer response if sending takes a moment
+        await inter.response.defer(ephemeral=True)
         success = await self.post_word(inter.guild.id)
         if success:
-            await inter.response.send_message("✅ Posted manually!", ephemeral=True)
+            await inter.followup.send("✅ Posted manually!")
         else:
-            await inter.response.send_message("⚠️ Could not post. Check configuration or word list.", ephemeral=True)
+            await inter.followup.send("⚠️ Could not post. Check configuration or word list.")
 
 async def setup(bot):
     await bot.add_cog(WordOfDayCog(bot))
-
-# Background task
-@tasks.loop(minutes=1)
-async def daily_word_task():
-    DATA_DIR = "bot_data"
-    for file in os.listdir(DATA_DIR):
-        if not file.endswith(".json"):
-            continue
-        gid = int(file.split(".")[0])
-        path = guild_file(gid)
-        cfg = await load_json(path, DEFAULT_CONFIG)
-        if not (cfg["post_channel"] and cfg["bars_channel"] and cfg["role_id"]):
-            continue
-        try:
-            tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
-        except Exception:
-            tz = pytz.timezone("Asia/Kolkata")
-        local_now = datetime.now(tz)
-        hour, minute = map(int, cfg["daily_time"].split(":"))
-        target_time = tz.localize(datetime(local_now.year, local_now.month, local_now.day, hour, minute))
-        last_post_iso = cfg.get("last_post")
-        last_post_dt = datetime.fromisoformat(last_post_iso) if last_post_iso else None
-        already_posted_today = False
-        if last_post_dt:
-            last_post_local = last_post_dt.replace(tzinfo=pytz.UTC).astimezone(tz)
-            already_posted_today = last_post_local.date() == local_now.date()
-        if not already_posted_today and local_now >= target_time:
-            # get bot instance via import to avoid circular import
-            from main import bot as main_bot
-            cog = main_bot.get_cog("WordOfDayCog")
-            if cog:
-                await cog.post_word(gid)
-            else:
-                # fallback: instantiate temporary cog
-                await WordOfDayCog(main_bot).post_word(gid)
