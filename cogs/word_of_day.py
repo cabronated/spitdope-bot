@@ -161,7 +161,7 @@ class WordOfDayCog(commands.Cog):
         await save_json(path, cfg)
         await inter.response.send_message(f"✅ Added {count} words!", ephemeral=True)
 
-    @app_commands.command(name="view_words", description="View remaining words (Admin)")
+    @app_commands.command(name="view_words", description="View remaining words")
     async def view_words(self, inter: discord.Interaction):
         cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
         words = cfg["words"]
@@ -182,7 +182,7 @@ class WordOfDayCog(commands.Cog):
                 return await inter.response.send_message(f"🗑️ Removed **{word}**", ephemeral=True)
         await inter.response.send_message("⚠️ Word not found.", ephemeral=True)
 
-    @app_commands.command(name="word_count", description="Show words left (Admin)")
+    @app_commands.command(name="word_count", description="Show words left")
     async def word_count(self, inter: discord.Interaction):
         cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
         await inter.response.send_message(f"🧾 Words left: **{len(cfg['words'])}**", ephemeral=True)
