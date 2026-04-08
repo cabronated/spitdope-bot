@@ -1,14 +1,13 @@
 # cogs/word_of_day.py
 import discord
-from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime, timedelta
-import pytz
-import os
-from utils.storage import guild_file, load_json, save_json
+from discord.ext import commands
+from typing import Optional
+import asyncio
 
-# perms checker
-OWNER_ID = 1485243296564641975  # replace with your actual Discord user ID
+from utils import db  # make sure utils is a package (utils/__init__.py)
+
+OWNER_ID = 123456789012345678  # replace with your Discord ID
 
 def admin_or_owner():
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -17,215 +16,100 @@ def admin_or_owner():
             or interaction.user.guild_permissions.administrator
         )
     return app_commands.check(predicate)
-    
 
-DEFAULT_CONFIG = {
-    "post_channel": None,
-    "bars_channel": None,
-    "role_id": None,
-    "daily_time": "07:00",
-    "timezone": "Asia/Kolkata",
-    "words": [],
-    "last_post": None,
-}
-
-class WordOfDayCog(commands.Cog):
+class WordOfDay(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Start the background task when the cog is loaded
-        self.daily_word_task.start()
+        # channel IDs stored per guild in memory; you should persist these if needed
+        self.guild_configs = {}  # {guild_id: {"post_channel": int, "daily_time": "HH:MM", "timezone": "Asia/Kolkata"}}
 
-    def cog_unload(self):
-        # Clean up and stop the background task when the cog is unloaded
-        self.daily_word_task.cancel()
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # ensure tables exist
+        await db.create_tables()
 
-    # ========== Background Task ==========
-    @tasks.loop(minutes=1)
-    async def daily_word_task(self):
-        # Ensure the bot is connected before trying to do anything
-        await self.bot.wait_until_ready()
-        
-        DATA_DIR = "bot_data"
-        if not os.path.exists(DATA_DIR):
+    # Admin-only setup (kept restricted)
+    @app_commands.command(name="setup", description="Configure Word of the Day for this server (Admin only).")
+    @admin_or_owner()
+    async def setup(self, interaction: discord.Interaction, post_channel: discord.TextChannel, daily_time: str, timezone: Optional[str] = "Asia/Kolkata"):
+        self.guild_configs[interaction.guild.id] = {
+            "post_channel": post_channel.id,
+            "daily_time": daily_time,
+            "timezone": timezone
+        }
+        await interaction.response.send_message("✅ Word of the Day configured for this server.", ephemeral=True)
+
+    # Open to everyone: add words (comma separated). language optional.
+    @app_commands.command(name="add_words", description="Add new words (comma separated). Language optional.")
+    async def add_words(self, interaction: discord.Interaction, words: str, language: Optional[str] = "english"):
+        added = 0
+        for raw in words.split(","):
+            w = raw.strip()
+            if not w:
+                continue
+            await db.add_word(w, language.lower(), interaction.user.id)
+            added += 1
+        await interaction.response.send_message(f"✅ Added {added} word(s) to the pool.", ephemeral=True)
+
+    # Open to everyone: view words (first N)
+    @app_commands.command(name="view_words", description="View words stored in the bot (first 100).")
+    async def view_words(self, interaction: discord.Interaction, limit: Optional[int] = 100):
+        rows = await db.get_words(limit=limit)
+        if not rows:
+            await interaction.response.send_message("📭 No words in the pool.", ephemeral=True)
             return
 
-        for file in os.listdir(DATA_DIR):
-            if not file.endswith(".json"):
-                continue
-            
-            try:
-                gid = int(file.split(".")[0])
-            except ValueError:
-                continue
+        lines = []
+        for r in rows:
+            # r is a tuple: (id, word, language, added_by, added_at)
+            _id, word, language, added_by, added_at = r
+            lines.append(f"{_id}. {word} — **{language}**")
 
-            path = guild_file(gid)
-            cfg = await load_json(path, DEFAULT_CONFIG)
-            
-            # Check if setup is fully complete for this guild
-            if not (cfg.get("post_channel") and cfg.get("bars_channel") and cfg.get("role_id")):
-                continue
+        # chunk message if too long
+        chunk = "\n".join(lines)
+        if len(chunk) > 1900:
+            # split into multiple messages
+            parts = [chunk[i:i+1900] for i in range(0, len(chunk), 1900)]
+            for p in parts:
+                await interaction.user.send(p)
+            await interaction.response.send_message("📬 Sent the word list to your DMs.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"📚 Words:\n{chunk}", ephemeral=True)
 
-            try:
-                tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
-            except Exception:
-                tz = pytz.timezone("Asia/Kolkata")
-                
-            local_now = datetime.now(tz)
-            
-            # Parse target time
-            try:
-                hour, minute = map(int, cfg["daily_time"].split(":"))
-            except (ValueError, KeyError):
-                # Fallback if config is broken
-                hour, minute = 7, 0 
-            
-            # Check if we already posted today
-            last_post_iso = cfg.get("last_post")
-            last_post_date = None
-            if last_post_iso:
-                # Convert the UTC ISO string back to local date for comparison
-                try:
-                    last_post_dt = datetime.fromisoformat(last_post_iso)
-                    if last_post_dt.tzinfo is None:
-                        last_post_dt = last_post_dt.replace(tzinfo=pytz.UTC)
-                    last_post_date = last_post_dt.astimezone(tz).date()
-                except ValueError:
-                    pass
+    # Open to everyone: word count
+    @app_commands.command(name="word_count", description="Show how many words are left in the pool.")
+    async def word_count(self, interaction: discord.Interaction):
+        count = await db.word_count()
+        await interaction.response.send_message(f"🔢 Words in pool: **{count}**", ephemeral=True)
 
-            # If it's the right hour and minute, and we haven't posted today yet
-            if local_now.hour == hour and local_now.minute == minute:
-                if last_post_date != local_now.date():
-                    await self.post_word(gid)
+    # Admin or owner only: post now (pops next word and posts to configured channel)
+    @app_commands.command(name="post_now", description="Post the next Word of the Day now (Admin or Owner only).")
+    @admin_or_owner()
+    async def post_now(self, interaction: discord.Interaction):
+        cfg = self.guild_configs.get(interaction.guild.id)
+        if not cfg:
+            return await interaction.response.send_message("❌ Server not configured. Use /setup first.", ephemeral=True)
 
-    # ========== Core Posting Logic ==========
-    async def post_word(self, gid: int) -> bool:
-        path = guild_file(gid)
-        cfg = await load_json(path, DEFAULT_CONFIG)
-        words = cfg.get("words", [])
-        
-        if not words:
-            print(f"[AUTO] ❌ No words left for guild {gid}")
-            return False
-            
+        row = await db.pop_next_word()
+        if not row:
+            return await interaction.response.send_message("📭 No words left to post.", ephemeral=True)
+
+        # row is a dict if RealDictCursor used in pop; but our wrapper returns a dict-like or tuple depending on implementation.
+        # To be safe, handle both:
+        if isinstance(row, dict):
+            word = row.get("word")
+            language = row.get("language")
+        else:
+            # tuple: (id, word, language, added_by, added_at)
+            _, word, language, _, _ = row
+
         channel = self.bot.get_channel(cfg["post_channel"])
         if not channel:
-            print(f"[AUTO] ⚠️ Missing post channel for guild {gid}")
-            return False
+            return await interaction.response.send_message("❌ Post channel not found. Check configuration.", ephemeral=True)
 
-        word = words.pop(0)
-        msg = (
-            f"**Word of the day is:**\n"
-            f"## {word}\n"
-            f"Drop bars using this word in <#{cfg['bars_channel']}>\n"
-            f"<@&{cfg['role_id']}>"
-        )
-        
-        await channel.send(msg)
-        
-        cfg["words"] = words
-        # Save last post time as UTC ISO format
-        cfg["last_post"] = datetime.now(pytz.UTC).isoformat()
-        await save_json(path, cfg)
-        print(f"[AUTO] ✅ Posted WOTD '{word}' in guild {gid}")
-        return True
+        await channel.send(f"📢 **Word of the Day**\n**{word}** — *{language}*")
+        await interaction.response.send_message("✅ Posted the next word.", ephemeral=True)
 
-    # ========== Slash commands ==========
-    @app_commands.command(name="setup", description="Configure bot for this server (Admin)")
-    @admin_or_owner()
-    async def setup(self, inter: discord.Interaction,
-                    post_channel: discord.TextChannel,
-                    bars_channel: discord.TextChannel,
-                    role: discord.Role,
-                    daily_time: str,
-                    timezone: str = "Asia/Kolkata"):
-        cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
-        cfg.update({
-            "post_channel": post_channel.id,
-            "bars_channel": bars_channel.id,
-            "role_id": role.id,
-            "daily_time": daily_time,
-            "timezone": timezone,
-        })
-        await save_json(guild_file(inter.guild.id), cfg)
-        await inter.response.send_message("✅ Setup updated!", ephemeral=True)
 
-    @app_commands.command(name="add_words", description="Add comma-separated words")
-    async def add_words(self, inter: discord.Interaction, words: str):
-        path = guild_file(inter.guild.id)
-        cfg = await load_json(path, DEFAULT_CONFIG)
-        count = 0
-        for w in [x.strip() for x in words.split(",") if x.strip()]:
-            if w.lower() not in [x.lower() for x in cfg["words"]]:
-                cfg["words"].append(w)
-                count += 1
-        await save_json(path, cfg)
-        await inter.response.send_message(f"✅ Added {count} words!", ephemeral=True)
-
-    @app_commands.command(name="view_words", description="View remaining words")
-    async def view_words(self, inter: discord.Interaction):
-        cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
-        words = cfg["words"]
-        if not words:
-            return await inter.response.send_message("📭 No words left.", ephemeral=True)
-        msg = "\n".join([f"{i+1}. {w}" for i, w in enumerate(words)])
-        await inter.response.send_message(f"📜 Word list:\n{msg}", ephemeral=True)
-
-    @app_commands.command(name="remove_word", description="Remove word (Admin)")
-    @admin_or_owner()
-    async def remove_word(self, inter: discord.Interaction, word: str):
-        path = guild_file(inter.guild.id)
-        cfg = await load_json(path, DEFAULT_CONFIG)
-        for w in cfg["words"]:
-            if w.lower() == word.lower():
-                cfg["words"].remove(w)
-                await save_json(path, cfg)
-                return await inter.response.send_message(f"🗑️ Removed **{word}**", ephemeral=True)
-        await inter.response.send_message("⚠️ Word not found.", ephemeral=True)
-
-    @app_commands.command(name="word_count", description="Show words left")
-    async def word_count(self, inter: discord.Interaction):
-        cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
-        await inter.response.send_message(f"🧾 Words left: **{len(cfg['words'])}**", ephemeral=True)
-
-    @app_commands.command(name="next_wordtime", description="See when the next word will post (Admin)")
-    @admin_or_owner()
-    async def next_wordtime(self, inter: discord.Interaction):
-        cfg = await load_json(guild_file(inter.guild.id), DEFAULT_CONFIG)
-        try:
-            tz = pytz.timezone(cfg.get("timezone", "Asia/Kolkata"))
-        except Exception:
-            tz = pytz.timezone("Asia/Kolkata")
-            
-        now = datetime.now(tz)
-        try:
-            hour, minute = map(int, cfg["daily_time"].split(":"))
-        except (ValueError, KeyError):
-            return await inter.response.send_message("⚠️ `daily_time` is not configured correctly. Please run `/setup` again.", ephemeral=True)
-            
-        next_time = tz.localize(datetime(now.year, now.month, now.day, hour, minute))
-        if now >= next_time:
-            next_time += timedelta(days=1)
-            
-        diff = next_time - now
-        hours, remainder = divmod(int(diff.total_seconds()), 3600)
-        mins = remainder // 60
-        
-        await inter.response.send_message(
-            f"🕓 **Next Post:** {next_time.strftime('%Y-%m-%d %H:%M %Z')}\n"
-            f"⏳ Time left: {hours}h {mins}m",
-            ephemeral=True
-        )
-
-    @app_commands.command(name="post_now", description="Post next word immediately (Admin)")
-    @admin_or_owner()
-    async def post_now(self, inter: discord.Interaction):
-        # We can defer response if sending takes a moment
-        await inter.response.defer(ephemeral=True)
-        success = await self.post_word(inter.guild.id)
-        if success:
-            await inter.followup.send("✅ Posted manually!")
-        else:
-            await inter.followup.send("⚠️ Could not post. Check configuration or word list.")
-
-async def setup(bot):
-    await bot.add_cog(WordOfDayCog(bot))
+async def setup(bot: commands.Bot):
+    await bot.add_cog(WordOfDay(bot))
