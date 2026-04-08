@@ -3,18 +3,17 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import asyncio
-from typing import List, Tuple, Optional
+from typing import List, Optional, Dict
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise SystemExit("DATABASE_URL not set in environment")
 
 def get_conn():
-    return psycopg2.connect(
-        dbname=os.getenv("PG_DB"),
-        user=os.getenv("PG_USER"),
-        password=os.getenv("PG_PASS"),
-        host=os.getenv("PG_HOST"),
-        port=int(os.getenv("PG_PORT", 5432))
-    )
+    return psycopg2.connect(DATABASE_URL)
 
-# --- Synchronous helpers (run in thread) ---
+# --- synchronous helpers ---
 
 def _create_tables_sync():
     conn = get_conn()
@@ -43,9 +42,9 @@ def _add_word_sync(word: str, language: str, user_id: Optional[int]):
     cur.close()
     conn.close()
 
-def _get_words_sync(limit: int = 200) -> List[Tuple]:
+def _get_words_sync(limit: int = 200) -> List[Dict]:
     conn = get_conn()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("SELECT id, word, language, added_by, added_at FROM words ORDER BY id ASC LIMIT %s", (limit,))
     rows = cur.fetchall()
     cur.close()
@@ -61,22 +60,36 @@ def _get_word_count_sync() -> int:
     conn.close()
     return count
 
-def _pop_next_word_sync() -> Optional[Tuple]:
+def _pop_next_word_sync() -> Optional[Dict]:
     """
-    Fetch and delete the oldest word (FIFO). Returns the row (id, word, language, added_by, added_at) or None.
+    Transactional pop using SKIP LOCKED to avoid race conditions.
+    Returns a dict or None.
     """
     conn = get_conn()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT id, word, language, added_by, added_at FROM words ORDER BY id ASC LIMIT 1")
-    row = cur.fetchone()
-    if row:
-        cur.execute("DELETE FROM words WHERE id = %s", (row["id"],))
+    try:
+        # Start a transaction
+        cur.execute("BEGIN;")
+        cur.execute("""
+            SELECT id, word, language, added_by, added_at
+            FROM words
+            ORDER BY id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1;
+        """)
+        row = cur.fetchone()
+        if row:
+            cur.execute("DELETE FROM words WHERE id = %s;", (row["id"],))
         conn.commit()
-    cur.close()
-    conn.close()
-    return row
+        return row
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
-# --- Async wrappers ---
+# --- async wrappers ---
 
 async def create_tables():
     await asyncio.to_thread(_create_tables_sync)
