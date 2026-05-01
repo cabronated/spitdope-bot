@@ -103,7 +103,7 @@ class WordOfDayCog(commands.Cog):
 
         await self._post_leaderboard(cfg["guild_id"], now.date(), tz)
 
-    # ── Core posting ──────────────────────────────────────────────────────────
+    # ── Core posting ────────────────────────────────────────────────────────…[...]
 
     async def _post_word(self, guild_id: int) -> bool:
         cfg = await db.get_guild_config(guild_id)
@@ -184,7 +184,7 @@ class WordOfDayCog(commands.Cog):
         )
         print(f"[LEADERBOARD] ✅ Posted daily recap for guild {guild_id}")
 
-    # ── /setup ────────────────────────────────────────────────────────────────
+    # ── /setup ──────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="setup", description="Configure bot for this server (Admin).")
     @admin_or_owner()
@@ -249,7 +249,7 @@ class WordOfDayCog(commands.Cog):
             ephemeral=True,
         )
 
-    # ── /add_words ────────────────────────────────────────────────────────────
+    # ── /add_words ─────────────────────────────────────────────────────────[...]
 
     @app_commands.command(name="add_words", description="Add comma-separated words to the queue (Admin).")
     @admin_or_owner()
@@ -265,7 +265,7 @@ class WordOfDayCog(commands.Cog):
             msg += f" Skipped **{skipped}** duplicate(s)."
         await inter.response.send_message(msg, ephemeral=True)
 
-    # ── /view_words ───────────────────────────────────────────────────────────
+    # ── /view_words ────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="view_words", description="View remaining words in the queue (Admin).")
     @admin_or_owner()
@@ -280,7 +280,7 @@ class WordOfDayCog(commands.Cog):
             text = text[:1900] + "\n…(truncated)"
         await inter.response.send_message(f"📜 Word queue:\n{text}", ephemeral=True)
 
-    # ── /remove_word ──────────────────────────────────────────────────────────
+    # ── /remove_word ────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="remove_word", description="Remove a word from the queue (Admin).")
     @admin_or_owner()
@@ -291,14 +291,14 @@ class WordOfDayCog(commands.Cog):
         else:
             await inter.response.send_message("⚠️ Word not found in the queue.", ephemeral=True)
 
-    # ── /word_count ───────────────────────────────────────────────────────────
+    # ── /word_count ────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="word_count", description="Show how many words are left in the queue.")
     async def word_count(self, inter: discord.Interaction) -> None:
         count = await db.word_count(inter.guild.id)
         await inter.response.send_message(f"🧾 Words left: **{count}**", ephemeral=True)
 
-    # ── /next_wordtime ────────────────────────────────────────────────────────
+    # ── /next_wordtime ───────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="next_wordtime", description="See when the next word will post (Admin).")
     @admin_or_owner()
@@ -336,7 +336,7 @@ class WordOfDayCog(commands.Cog):
             ephemeral=True,
         )
 
-    # ── /post_now ─────────────────────────────────────────────────────────────
+    # ── /post_now ─────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="post_now", description="Post the next word immediately (Admin).")
     @admin_or_owner()
@@ -348,7 +348,7 @@ class WordOfDayCog(commands.Cog):
         else:
             await inter.followup.send("⚠️ Could not post. Check config and word queue.")
 
-    # ── /topverse ─────────────────────────────────────────────────────────────
+    # ── /topverse ─────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="topverse", description="Show today's top rated verse(s).")
     async def topverse(self, inter: discord.Interaction) -> None:
@@ -375,20 +375,18 @@ class WordOfDayCog(commands.Cog):
         )
 
         if top_wotd:
-            user = self.bot.get_user(int(top_wotd["user_id"]))
-            name = user.display_name if user else f"User {top_wotd['user_id']}"
+            user_mention = f"<@{top_wotd['user_id']}>"
             embed.add_field(
                 name=f"🔥 Best WOTD Verse  •  {top_wotd['score']}/10",
-                value=f"**{name}**\n> {top_wotd['bar_text'][:200]}",
+                value=user_mention,
                 inline=False,
             )
 
         if top_overall and (not top_wotd or top_overall["id"] != top_wotd["id"]):
-            user = self.bot.get_user(int(top_overall["user_id"]))
-            name = user.display_name if user else f"User {top_overall['user_id']}"
+            user_mention = f"<@{top_overall['user_id']}>"
             embed.add_field(
                 name=f"🎤 Best Overall  •  {top_overall['score']}/10",
-                value=f"**{name}**\n> {top_overall['bar_text'][:200]}",
+                value=user_mention,
                 inline=False,
             )
 
