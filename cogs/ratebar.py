@@ -60,7 +60,10 @@ Keep it tight — Discord has a 2000 character limit. Use this exact structure:
 - If the verse is under 4 bars, note it and still rate what's there.
 - Do not rate anything that isn't rap lyrics. Politely redirect.
 - Avoid filler like "Great effort!" — give real, specific critique.
-- If a bar is genuinely elite, say so. If it's weak, say exactly why.\
+- If a bar is genuinely elite, say so. If it's weak, say exactly why.
+
+**The Input**:
+{bar}\
 """
 
 _SCORE_RE = re.compile(r"\b(\d(?:\.\d)?)/10\b")
