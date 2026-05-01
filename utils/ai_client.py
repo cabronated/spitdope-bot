@@ -34,7 +34,7 @@ def _call_gemini(prompt: str) -> str:
     if not api_key:
         return "⚠️ GEMINI_API_KEY is not set."
 
-    model = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash-lite")
+    model = os.getenv("GEMINI_MODEL", "models/gemma-4-26b-a4b-it")
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
