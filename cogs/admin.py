@@ -47,6 +47,11 @@ class Admin(commands.Cog):
         await ctx.send("Shutting down.", delete_after=3)
         await self.bot.close()
 
+    @commands.command(name="ping")
+    async def ping(self, ctx: commands.Context) -> None:
+        if not self._is_owner(ctx):
+            return
+        await ctx.send(f"🏓 {round(self.bot.latency * 1000)}ms")
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Admin(bot))
