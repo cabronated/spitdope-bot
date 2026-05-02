@@ -139,42 +139,37 @@ class WordOfDayCog(commands.Cog):
         cfg = await db.get_guild_config(guild_id)
         if not cfg:
             return
-
+    
         channel = self.bot.get_channel(cfg["post_channel"])
         if not channel:
             return
-
+    
         top_wotd     = await db.get_top_verse(guild_id, today, had_wotd=True)
         top_overall  = await db.get_top_verse(guild_id, today, had_wotd=None)
-
+    
         # Nothing rated today — skip silently
         if not top_wotd and not top_overall:
             return
-
+    
         embed = discord.Embed(
-            title=f"🏆 Daily Verse Recap — {today.strftime('%d %b %Y')}",
+            title=f"🏆 Top Verses Today — {today.strftime('%d %b %Y')}",
             color=discord.Color.gold(),
         )
-
+    
         if top_wotd:
-            user = self.bot.get_user(int(top_wotd["user_id"]))
-            name = user.display_name if user else f"User {top_wotd['user_id']}"
             embed.add_field(
                 name=f"🔥 Best WOTD Verse  •  {top_wotd['score']}/10",
-                value=f"**{name}**\n> {top_wotd['bar_text'][:200]}",
+                value=f"<@{top_wotd['user_id']}>",
                 inline=False,
             )
-
+    
         if top_overall and (not top_wotd or top_overall["id"] != top_wotd["id"]):
-            user = self.bot.get_user(int(top_overall["user_id"]))
-            name = user.display_name if user else f"User {top_overall['user_id']}"
             embed.add_field(
-                name=f"🎤 Best Overall Verse  •  {top_overall['score']}/10",
-                value=f"**{name}**\n> {top_overall['bar_text'][:200]}",
+                name=f"🎤 Best Overall  •  {top_overall['score']}/10",
+                value=f"<@{top_overall['user_id']}>",
                 inline=False,
             )
-
-        embed.set_footer(text="Team Spitdope • see you tomorrow 🎧")
+    
         await channel.send(embed=embed)
 
         # Mark leaderboard as posted
