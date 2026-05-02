@@ -1,10 +1,11 @@
-# cogs/admin.py
 import os
 import sys
 import discord
 from discord.ext import commands
 
 from utils.checks import OWNER_ID
+
+RESTART_FLAG = ".restart_channel"  # temp file to remember where to reply
 
 
 class Admin(commands.Cog):
@@ -14,10 +15,24 @@ class Admin(commands.Cog):
     def _is_owner(self, ctx: commands.Context) -> bool:
         return ctx.author.id == OWNER_ID
 
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        if not os.path.exists(RESTART_FLAG):
+            return
+        with open(RESTART_FLAG) as f:
+            channel_id = int(f.read().strip())
+        os.remove(RESTART_FLAG)
+        channel = self.bot.get_channel(channel_id)
+        if channel:
+            await channel.send("✅ Back online.")
+
     @commands.command(name="restart")
     async def restart(self, ctx: commands.Context) -> None:
         if not self._is_owner(ctx):
-            return  
+            return
+
+        with open(RESTART_FLAG, "w") as f:
+            f.write(str(ctx.channel.id))
 
         await ctx.message.add_reaction("🔄")
         await ctx.send("Restarting...", delete_after=3)
