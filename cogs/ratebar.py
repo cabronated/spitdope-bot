@@ -66,13 +66,17 @@ Keep it tight — Discord has a 2000 character limit. Use this exact structure:
 {bar}\
 """
 
-_SCORE_RE = re.compile(r"\b(\d(?:\.\d)?)/10\b")
+_SCORE_RE = re.compile(
+    r"\*{0,2}(\d+(?:\.\d+)?)\*{0,2}\s*/\s*10\b",
+    re.IGNORECASE
+)
 
 
 def parse_score(text: str) -> float:
-    """Pull the first X/10 out of the AI response. Returns 0.0 if not found."""
-    m = _SCORE_RE.search(text)
-    return float(m.group(1)) if m else 0.0
+    matches = _SCORE_RE.findall(text)
+    if not matches:
+        return 0.0
+    return round(min(max(float(matches[-1]), 0), 10), 1)
 
 
 def contains_wotd(bar: str, wotd: str) -> bool:
