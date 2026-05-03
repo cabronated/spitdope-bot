@@ -53,5 +53,13 @@ class Admin(commands.Cog):
             return
         await ctx.send(f"🏓 {round(self.bot.latency * 1000)}ms")
 
+    @commands.command(name="sync")
+    async def sync(self, ctx: commands.Context) -> None:
+        if not self._is_owner(ctx):
+            return
+        await ctx.typing()
+        synced = await self.bot.tree.sync()
+        await ctx.send(f"✅ Synced **{len(synced)}** commands.")
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Admin(bot))
