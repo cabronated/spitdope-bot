@@ -10,7 +10,7 @@ from discord import app_commands
 OWNER_ID = int(os.getenv("OWNER_ID", "1485243296564641975"))
 
 # Add role IDs and user IDs you want to count as staff
-STAFF_ROLE_IDS: set[int] = {1181266645965094912}
+STAFF_ROLE_IDS: set[int] = {1181266645965094912, 1500463235734704233}
 
 STAFF_USER_IDS: set[int] = {}
 
