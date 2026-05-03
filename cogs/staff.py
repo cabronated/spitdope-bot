@@ -33,9 +33,9 @@ class Staff(commands.Cog):
             type=discord.ChannelType.public_thread,
         )
         await inter.response.send_message(f"✅ Thread created: {thread.mention}")
-        )
 
-    # ── /thread ───────────────────────────────────────────────────────────────
+    # ── /chatbattle ───────────────────────────────────────────────────────────
+
     @app_commands.command(name="chatbattle", description="Start a chat battle between two users (Staff).")
     @staff_only()
     async def chatbattle(
@@ -48,7 +48,7 @@ class Staff(commands.Cog):
             name=f"⚔️ {user1.display_name} vs {user2.display_name}",
             type=discord.ChannelType.public_thread,
         )
-    
+
         embed = discord.Embed(
             title="⚔️ Chat Battle",
             description=(
@@ -59,12 +59,12 @@ class Staff(commands.Cog):
             color=discord.Color.red(),
         )
         embed.set_footer(text=f"Battle started by {inter.user.display_name}")
-    
-        # pings outside embed so they actually get notified
+
         await inter.response.send_message(
             content=f"{user1.mention} {user2.mention}",
             embed=embed,
         )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Staff(bot))
