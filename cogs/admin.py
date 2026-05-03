@@ -30,13 +30,13 @@ class Admin(commands.Cog):
     async def restart(self, ctx: commands.Context) -> None:
         if not self._is_owner(ctx):
             return
-
+    
         with open(RESTART_FLAG, "w") as f:
             f.write(str(ctx.channel.id))
-
+    
         await ctx.message.add_reaction("🔄")
         await ctx.send("Restarting...", delete_after=3)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        await self.bot.close()
 
     @commands.command(name="shutdown")
     async def shutdown(self, ctx: commands.Context) -> None:
