@@ -32,9 +32,7 @@ class Staff(commands.Cog):
             name=name,
             type=discord.ChannelType.public_thread,
         )
-        await inter.response.send_message(
-            f"✅ Thread created: {thread.mention}",
-            ephemeral=True,
+        await inter.response.send_message(f"✅ Thread created: {thread.mention}")
         )
 
 
