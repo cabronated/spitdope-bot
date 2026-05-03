@@ -170,7 +170,7 @@ class WordOfDayCog(commands.Cog):
     # ── /view_words ───────────────────────────────────────────────────────────
 
     @app_commands.command(name="view_words", description="View remaining words in the queue (Admin).")
-    @admin_or_owner()
+    @staff_only()
     async def view_words(self, inter: discord.Interaction) -> None:
         words = await db.get_words(inter.guild.id)
         if not words:
