@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import pytz
 
 from utils.checks import admin_or_owner
+from utils.checks import staff_only
 from utils import db
 
 IST = pytz.timezone("Asia/Kolkata")
@@ -62,47 +63,6 @@ class WordOfDayCog(commands.Cog):
         if now.hour == hour and now.minute == minute and last_post_date != now.date():
             await self._post_word(cfg["guild_id"])
 
-    # ── Leaderboard scheduler ─────────────────────────────────────────────────
-
-    @tasks.loop(minutes=1)
-    async def daily_leaderboard_task(self) -> None:
-        guilds = await db.get_all_configured_guilds()
-        for cfg in guilds:
-            await self._maybe_post_leaderboard(cfg)
-
-    @daily_leaderboard_task.before_loop
-    async def _before_leaderboard(self) -> None:
-        await self.bot.wait_until_ready()
-
-    async def _maybe_post_leaderboard(self, cfg: dict) -> None:
-        try:
-            tz = pytz.timezone(cfg.get("timezone") or "Asia/Kolkata")
-        except Exception:
-            tz = pytz.timezone("Asia/Kolkata")
-
-        now = datetime.now(tz)
-
-        # Post leaderboard LEADERBOARD_OFFSET_MINS before midnight
-        target_minute = (24 * 60) - LEADERBOARD_OFFSET_MINS
-        current_minute = now.hour * 60 + now.minute
-
-        if current_minute != target_minute:
-            return
-
-        # Use last_leaderboard to avoid double-posting
-        last = cfg.get("last_leaderboard")
-        if last:
-            try:
-                lp = datetime.fromisoformat(last)
-                if lp.tzinfo is None:
-                    lp = lp.replace(tzinfo=pytz.UTC)
-                if lp.astimezone(tz).date() == now.date():
-                    return
-            except ValueError:
-                pass
-
-        await self._post_leaderboard(cfg["guild_id"], now.date(), tz)
-
     # ── Core posting ────────────────────────────────────────────────────────…[...]
 
     async def _post_word(self, guild_id: int) -> bool:
@@ -136,49 +96,6 @@ class WordOfDayCog(commands.Cog):
         return True
 
     async def _post_leaderboard(self, guild_id: int, today, tz) -> None:
-        cfg = await db.get_guild_config(guild_id)
-        if not cfg:
-            return
-    
-        channel = self.bot.get_channel(cfg["post_channel"])
-        if not channel:
-            return
-    
-        top_wotd     = await db.get_top_verse(guild_id, today, had_wotd=True)
-        top_overall  = await db.get_top_verse(guild_id, today, had_wotd=None)
-    
-        # Nothing rated today — skip silently
-        if not top_wotd and not top_overall:
-            return
-    
-        embed = discord.Embed(
-            title=f"🏆 Top Verses Today — {today.strftime('%d %b %Y')}",
-            color=discord.Color.gold(),
-        )
-    
-        if top_wotd:
-            embed.add_field(
-                name=f"🔥 Best WOTD Verse  •  {top_wotd['score']}/10",
-                value=f"<@{top_wotd['user_id']}>",
-                inline=False,
-            )
-    
-        if top_overall and (not top_wotd or top_overall["id"] != top_wotd["id"]):
-            embed.add_field(
-                name=f"🎤 Best Overall  •  {top_overall['score']}/10",
-                value=f"<@{top_overall['user_id']}>",
-                inline=False,
-            )
-    
-        await channel.send(embed=embed)
-
-        # Mark leaderboard as posted
-        await db.upsert_guild_config(
-            guild_id,
-            last_leaderboard=datetime.now(pytz.UTC).isoformat(),
-        )
-        print(f"[LEADERBOARD] ✅ Posted daily recap for guild {guild_id}")
-
     # ── /setup ──────────────────────────────────────────────────────────…[...]
 
     @app_commands.command(name="setup", description="Configure bot for this server (Admin).")
@@ -247,7 +164,7 @@ class WordOfDayCog(commands.Cog):
     # ── /add_words ─────────────────────────────────────────────────────────[...]
 
     @app_commands.command(name="add_words", description="Add comma-separated words to the queue (Admin).")
-    @admin_or_owner()
+    @staff_only()
     async def add_words(self, inter: discord.Interaction, words: str) -> None:
         word_list = [w.strip() for w in words.split(",") if w.strip()]
         if not word_list:
