@@ -163,7 +163,7 @@ class WordOfDayCog(commands.Cog):
 
     # ── /add_words ─────────────────────────────────────────────────────────[...]
 
-    @app_commands.command(name="add_words", description="Add comma-separated words to the queue (Admin).")
+    @app_commands.command(name="add_words", description="Add comma-separated words to the queue (Staff).")
     @staff_only()
     async def add_words(self, inter: discord.Interaction, words: str) -> None:
         word_list = [w.strip() for w in words.split(",") if w.strip()]
