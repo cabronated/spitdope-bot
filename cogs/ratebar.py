@@ -17,7 +17,7 @@ COLOR_NORMAL = discord.Color.orange()
 COLOR_WOTD   = discord.Color.green()
 
 BAR_PROMPT = """\
-You are a sharp, knowledgeable hip-hop verse critic. When a user shares rap lyrics or a verse, analyze it across five dimensions — lyricism, flow & rhythm, rhyme scheme, bars & punchlines, and theme & storytelling — but do NOT show individual scores for each. Give written feedback only, then one final rating at the end.
+You are a sharp, knowledgeable hip-hop verse critic. When a user shares rap lyrics or a verse, analyze it across five dimensions — lyricism, flow & rhythm, rhyme scheme, bars & punchlines, and theme & storytelling.
 
 Be honest, constructive, and direct. No sugarcoating, no unnecessary harshness. Speak like someone who genuinely lives and breathes hip-hop culture.
 
@@ -89,7 +89,7 @@ class BarsAnalyzer(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    # ── /ratebar ─────────────────────────────────────────────────────────────
+    # ── /ratebar ──────────────────────────────────────────────────────────
 
     @app_commands.command(name="ratebar", description="Analyze your rap bar (3 uses per day).")
     async def ratebar(self, interaction: discord.Interaction, bar: str) -> None:
@@ -106,43 +106,58 @@ class BarsAnalyzer(commands.Cog):
 
         await interaction.response.defer(thinking=True)
 
-        wotd = await db.get_current_wotd(interaction.guild_id)
-        had_wotd = bool(wotd and contains_wotd(bar, wotd))
+        try:
+            wotd = await db.get_current_wotd(interaction.guild_id)
+            had_wotd = bool(wotd and contains_wotd(bar, wotd))
 
-        analysis = await analyze_text(BAR_PROMPT.format(bar=bar))
-        score = parse_score(analysis)
-        new_count = await db.increment_usage(interaction.user.id, today)
+            analysis = await analyze_text(BAR_PROMPT.format(bar=bar))
+            score = parse_score(analysis)
 
-        await db.save_verse(
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
-            bar_text=bar,
-            score=score,
-            had_wotd=had_wotd,
-            wotd=wotd,
-            scored_date=today,
-        )
+            # Only increment usage AFTER successful analysis
+            new_count = await db.increment_usage(interaction.user.id, today)
 
-        color = COLOR_WOTD if had_wotd else COLOR_NORMAL
-        title = "🎧 SPITDOPE BAR BREAKDOWN"
-        if had_wotd:
-            title += f"  •  🔥 WOTD: {wotd}"
-
-        embed = discord.Embed(title=title, description=analysis[:4000], color=color)
-        embed.set_footer(
-            text=(
-                f"dropped by {interaction.user.display_name} "
-                f"| {now.strftime('%H:%M')} IST "
-                f"| {new_count}/{DAILY_LIMIT} used"
-                + (" | contains WOTD ✅" if had_wotd else "")
+            await db.save_verse(
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+                bar_text=bar,
+                score=score,
+                had_wotd=had_wotd,
+                wotd=wotd,
+                scored_date=today,
             )
-        )
-        await interaction.followup.send(embed=embed)
 
-        if had_wotd:
-            cfg = await db.get_guild_config(interaction.guild_id)
-            if cfg:
-                await self._handle_wotd_action(interaction, cfg, embed)
+            color = COLOR_WOTD if had_wotd else COLOR_NORMAL
+            title = "🎧 SPITDOPE BAR BREAKDOWN"
+            if had_wotd:
+                title += f"  •  🔥 WOTD: {wotd}"
+
+            embed = discord.Embed(title=title, description=analysis[:4000], color=color)
+            embed.set_footer(
+                text=(
+                    f"dropped by {interaction.user.display_name} "
+                    f"| {now.strftime('%H:%M')} IST "
+                    f"| {new_count}/{DAILY_LIMIT} used"
+                    + (" | contains WOTD ✅" if had_wotd else "")
+                )
+            )
+            await interaction.followup.send(embed=embed)
+
+            if had_wotd:
+                cfg = await db.get_guild_config(interaction.guild_id)
+                if cfg:
+                    await self._handle_wotd_action(interaction, cfg, embed)
+
+        except Exception as e:
+            # Log the error for debugging (if needed)
+            print(f"Error in ratebar command: {e}")
+            
+            # Send user-friendly error message without exposing error details
+            error_embed = discord.Embed(
+                title="❌ Something went wrong",
+                description="Sorry, couldn't analyze that bar right now. Please try again later!",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=error_embed)
 
     async def _handle_wotd_action(
         self,
@@ -175,7 +190,7 @@ class BarsAnalyzer(commands.Cog):
             mention = f"<@&{role_id}>" if role_id else ""
             await bars_channel.send(content=mention, embed=fwd_embed)
 
-    # ── /clearcooldown ────────────────────────────────────────────────────────
+    # ── /clearcooldown ───────────────────────────────────────────────────────
 
     @app_commands.command(name="clearcooldown", description="Clear all ratebar cooldowns (Admin only).")
     @admin_or_owner()
@@ -183,7 +198,7 @@ class BarsAnalyzer(commands.Cog):
         await db.clear_all_usage()
         await interaction.response.send_message("✅ All cooldowns cleared.", ephemeral=True)
 
-    # ── /statsbar ─────────────────────────────────────────────────────────────
+    # ── /statsbar ─────────────────────────────────────────────────────────
 
     @app_commands.command(name="statsbar", description="Show today's bar rating usage (Admin only).")
     @admin_or_owner()
