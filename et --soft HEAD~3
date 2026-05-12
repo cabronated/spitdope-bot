@@ -1,0 +1,30 @@
+[33m77c6bf7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mbackshots[m[33m, [m[1;31morigin/backshots[m[33m, [m[1;31morigin/HEAD[m[33m)[m Enable presence intent for Discord bot
+[33m796ce0d[m Add verify_config table for guild verification
+[33mc8b3ca7[m Add role verification system with commands
+[33m0dd27ef[m Enhance error logging and response handling in ratebar
+[33m1a94674[m Fix ratebar error handling: hide debug logs, preserve usage on failure
+[33m8b5b722[m Change view_words command decorator to staff_only
+[33m19fb0b3[m Add new staff role ID to STAFF_ROLE_IDS
+[33ma86ceb1[m Enable member intents for Discord bot
+[33m0c8c3fd[m Modify restart command to close bot before restart
+[33m2a8d0fb[m Refactor chat battle command and update comments
+[33m3deb548[m Add chatbattle command for staff to initiate battles
+[33m1298083[m Simplify thread creation response message
+[33md41d78d[m Add Staff cog with thread creation command
+[33ma2bfa36[m Refactor imports and clean up comments in word_of_day.py
+[33mdd7f2eb[m Add sync command to synchronize bot commands
+[33m986512a[m Change command description from 'Admin' to 'Staff'
+[33mb242bbb[m Update STAFF_ROLE_IDS to new role ID
+[33m8867857[m Replace admin_or_owner in add_words cmd with staff_only decorator
+[33m928a29a[m Implement staff-only permission check
+[33m1907fd5[m Add ping command to admin cog
+[33m3c37682[m Implement on_ready listener for restart notification
+[33m88666ee[m Add Admin cog with restart and shutdown commands
+[33meba5e46[m changed regex to to parse rating
+[33m6b27ff0[m refactor leaderboard posting logic in word_of_day.py
+[33m50cfa9a[m input placeholder
+[33me3134a8[m revised ratebar analysis prompt
+[33m2b3a251[m Update default GEMINI_MODEL to gemma-4-26b-a4b-it
+[33me5ca0b3[m refactor: update topverse embed to show mentions instead of verses
+[33m30930b0[m dlt
+[33m461e570[m initial cmmit
