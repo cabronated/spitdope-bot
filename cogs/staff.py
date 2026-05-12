@@ -36,8 +36,7 @@ class Staff(commands.Cog):
 
     # ── /chatbattle ───────────────────────────────────────────────────────────
 
-    @app_commands.command(name="chatbattle", description="Start a chat battle between two users (Staff).")
-    @staff_only()
+    @app_commands.command(name="chatbattle", description="Start a chat battle between two users.")
     async def chatbattle(
         self,
         inter: discord.Interaction,
