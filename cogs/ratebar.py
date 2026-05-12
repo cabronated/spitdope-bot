@@ -1,5 +1,6 @@
 # cogs/ratebar.py
 import re
+import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -15,6 +16,8 @@ IST = pytz.timezone("Asia/Kolkata")
 
 COLOR_NORMAL = discord.Color.orange()
 COLOR_WOTD   = discord.Color.green()
+
+logger = logging.getLogger(__name__)
 
 BAR_PROMPT = """\
 You are a sharp, knowledgeable hip-hop verse critic. When a user shares rap lyrics or a verse, analyze it across five dimensions — lyricism, flow & rhythm, rhyme scheme, bars & punchlines, and theme & storytelling.
@@ -113,9 +116,7 @@ class BarsAnalyzer(commands.Cog):
             analysis = await analyze_text(BAR_PROMPT.format(bar=bar))
             score = parse_score(analysis)
 
-            # Only increment usage AFTER successful analysis
-            new_count = await db.increment_usage(interaction.user.id, today)
-
+            # FIX 1: save_verse before increment so a failed save doesn't burn a daily use
             await db.save_verse(
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
@@ -126,12 +127,17 @@ class BarsAnalyzer(commands.Cog):
                 scored_date=today,
             )
 
+            new_count = await db.increment_usage(interaction.user.id, today)
+
             color = COLOR_WOTD if had_wotd else COLOR_NORMAL
             title = "🎧 SPITDOPE BAR BREAKDOWN"
             if had_wotd:
                 title += f"  •  🔥 WOTD: {wotd}"
 
-            embed = discord.Embed(title=title, description=analysis[:4000], color=color)
+            # FIX 2: clean truncation instead of hard slice mid-word
+            description = analysis if len(analysis) <= 4000 else analysis[:3997] + "..."
+
+            embed = discord.Embed(title=title, description=description, color=color)
             embed.set_footer(
                 text=(
                     f"dropped by {interaction.user.display_name} "
@@ -145,19 +151,26 @@ class BarsAnalyzer(commands.Cog):
             if had_wotd:
                 cfg = await db.get_guild_config(interaction.guild_id)
                 if cfg:
-                    await self._handle_wotd_action(interaction, cfg, embed)
+                    # FIX 3: _handle_wotd_action errors caught so they don't crash the command
+                    try:
+                        await self._handle_wotd_action(interaction, cfg, embed)
+                    except Exception:
+                        logger.warning("WOTD action failed", exc_info=True)
 
         except Exception as e:
-            # Log the error for debugging (if needed)
-            print(f"Error in ratebar command: {e}")
-            
-            # Send user-friendly error message without exposing error details
-            error_embed = discord.Embed(
-                title="❌ Something went wrong",
-                description="Sorry, couldn't analyze that bar right now. Please try again later!",
-                color=discord.Color.red()
-            )
-            await interaction.followup.send(embed=error_embed)
+            # FIX 4a: full traceback logged instead of bare print
+            logger.error(f"Error in ratebar for user {interaction.user.id}: {e}", exc_info=True)
+
+            # FIX 4b: followup.send itself wrapped in case it also fails
+            try:
+                error_embed = discord.Embed(
+                    title="❌ Something went wrong",
+                    description="Sorry, couldn't analyze that bar right now. Please try again later!",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=error_embed)
+            except Exception:
+                logger.error("Failed to send error embed to user", exc_info=True)
 
     async def _handle_wotd_action(
         self,
