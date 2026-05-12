@@ -74,6 +74,25 @@ _SCORE_RE = re.compile(
     re.IGNORECASE
 )
 
+# Strings that ai_client.py might return instead of raising on failure.
+# Adjust these to match whatever your ai_client actually returns on error.
+_ERROR_PREFIXES = (
+    "error",
+    "❌",
+    "sorry",
+    "i'm sorry",
+    "i am sorry",
+    "unable to",
+    "i couldn't",
+    "i could not",
+)
+
+
+def _looks_like_error(text: str) -> bool:
+    """Return True if analyze_text returned an error string instead of raising."""
+    lowered = text.strip().lower()
+    return any(lowered.startswith(p) for p in _ERROR_PREFIXES)
+
 
 def parse_score(text: str) -> float:
     matches = _SCORE_RE.findall(text)
@@ -114,9 +133,13 @@ class BarsAnalyzer(commands.Cog):
             had_wotd = bool(wotd and contains_wotd(bar, wotd))
 
             analysis = await analyze_text(BAR_PROMPT.format(bar=bar))
+
+            # ── KEY FIX: treat a returned error string the same as a raised exception ──
+            if not analysis or _looks_like_error(analysis):
+                raise ValueError(f"analyze_text returned an error string: {analysis!r}")
+
             score = parse_score(analysis)
 
-            # FIX 1: save_verse before increment so a failed save doesn't burn a daily use
             await db.save_verse(
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
@@ -127,6 +150,7 @@ class BarsAnalyzer(commands.Cog):
                 scored_date=today,
             )
 
+            # ── Increment ONLY after everything above succeeded ──
             new_count = await db.increment_usage(interaction.user.id, today)
 
             color = COLOR_WOTD if had_wotd else COLOR_NORMAL
@@ -134,7 +158,6 @@ class BarsAnalyzer(commands.Cog):
             if had_wotd:
                 title += f"  •  🔥 WOTD: {wotd}"
 
-            # FIX 2: clean truncation instead of hard slice mid-word
             description = analysis if len(analysis) <= 4000 else analysis[:3997] + "..."
 
             embed = discord.Embed(title=title, description=description, color=color)
@@ -151,17 +174,14 @@ class BarsAnalyzer(commands.Cog):
             if had_wotd:
                 cfg = await db.get_guild_config(interaction.guild_id)
                 if cfg:
-                    # FIX 3: _handle_wotd_action errors caught so they don't crash the command
                     try:
                         await self._handle_wotd_action(interaction, cfg, embed)
                     except Exception:
                         logger.warning("WOTD action failed", exc_info=True)
 
         except Exception as e:
-            # FIX 4a: full traceback logged instead of bare print
             logger.error(f"Error in ratebar for user {interaction.user.id}: {e}", exc_info=True)
 
-            # FIX 4b: followup.send itself wrapped in case it also fails
             try:
                 error_embed = discord.Embed(
                     title="❌ Something went wrong",
